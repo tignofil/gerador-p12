@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gerador de Certificado P12</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/forge/1.3.1/forge.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #f5f2ed;
+      --surface: #ffffff;
+      --border: #d6d0c8;
+      --text: #1a1814;
+      --muted: #7a7368;
+      --accent: #1a1814;
+      --accent-fg: #f5f2ed;
+      --success-bg: #e8f5e0;
+      --success-text: #2d6a1f;
+      --error-bg: #fce8e8;
+      --error-text: #8b1f1f;
+      --warn-bg: #fef5e0;
+      --warn-text: #7a5210;
+    }
+
+    body {
+      font-family: 'Syne', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+
+    .page {
+      max-width: 620px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 2.5rem;
+    }
+
+    .tag {
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    h1 {
+      font-size: clamp(28px, 5vw, 40px);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+
+    h1 span {
+      color: var(--muted);
+    }
+
+    .subtitle {
+      margin-top: 10px;
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .card-title {
+      font-family: 'DM Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+    .field:last-child { margin-bottom: 0; }
+
+    label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.04em;
+    }
+
+    input, select {
+      font-family: 'DM Mono', monospace;
+      font-size: 14px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.15s;
+      width: 100%;
+    }
+
+    input:focus, select:focus {
+      border-color: var(--text);
+    }
+
+    input::placeholder {
+      color: #b0aba3;
+    }
+
+    .required { color: #c0392b; margin-left: 2px; }
+
+    .strength-bar {
+      height: 3px;
+      border-radius: 2px;
+      background: var(--border);
+      margin-top: 5px;
+      overflow: hidden;
+    }
+
+    .strength-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 2px;
+      transition: width 0.3s, background 0.3s;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--accent);
+      color: var(--accent-fg);
+      border: none;
+      border-radius: 12px;
+      font-family: 'Syne', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 1.25rem;
+    }
+
+    .btn:hover:not(:disabled) { opacity: 0.85; }
+    .btn:active:not(:disabled) { transform: scale(0.99); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(245,242,237,0.3);
+      border-top-color: var(--accent-fg);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      display: none;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status {
+      margin-top: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+    }
+
+    .status.ok { display: block; background: var(--success-bg); color: var(--success-text); }
+    .status.err { display: block; background: var(--error-bg); color: var(--error-text); }
+    .status.loading { display: block; background: var(--warn-bg); color: var(--warn-text); }
+
+    .info-box {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      background: var(--warn-bg);
+      border: 1px solid #e8d89a;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-top: 1rem;
+    }
+
+    .info-box .icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .info-box p { font-size: 12px; color: var(--warn-text); line-height: 1.6; }
+
+    footer {
+      margin-top: 2rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'DM Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #4caf6e;
+      flex-shrink: 0;
+    }
+
+    @media (max-width: 480px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <header>
+      <p class="tag">Ferramenta interna — uso da equipe</p>
+      <h1>Gerador de<br /><span>Certificado P12</span></h1>
+      <p class="subtitle">Crie certificados PKCS#12. Todo o processamento ocorre no seu navegador.</p>
+    </header>
+
+    <div class="card">
+      <div class="card-title">01 — Identidade</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Nome comum (CN) <span class="required">*</span></label>
+          <input type="text" id="cn" placeholder="João Silva" />
+        </div>
+        <div class="field">
+          <label>Organização (O)</label>
+          <input type="text" id="org" placeholder="Minha Empresa" />
+        </div>
+        <div class="field">
+          <label>País (C)</label>
+          <input type="text" id="country" placeholder="BR" maxlength="2" value="BR" />
+        </div>
+        <div class="field">
+          <label>Estado (ST)</label>
+          <input type="text" id="state" placeholder="Rio de Janeiro" />
+        </div>
+      </div>
+      <div class="field" style="margin-top:14px">
+        <label>E-mail (opcional)</label>
+        <input type="email" id="email" placeholder="joao@empresa.com" />
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">02 — Configurações técnicas</div>
+      <div class="grid-2">
+        <div class="field">
+          <label>Tamanho da chave</label>
+          <select id="keysize">
+            <option value="2048">2048 bits (padrão)</option>
+            <option value="4096">4096 bits (mais seguro)</option>
+            <option value="1024">1024 bits (legado)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Validade (dias)</label>
+          <input type="number" id="days" value="365" min="1" max="3650" />
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">03 — Senha de proteção</div>
+      <div class="field">
+        <label>Senha <span class="required">*</span></label>
+        <input type="password" id="pass" placeholder="Mínimo 6 caracteres" oninput="atualizaForca(this.value)" />
+        <div class="strength-bar"><div class="strength-fill" id="strength-fill"></div></div>
+      </div>
+      <div class="field">
+        <label>Confirmar senha <span class="required">*</span></label>
+        <input type="password" id="pass2" placeholder="Repita a senha" />
+      </div>
+    </div>
+
+    <button class="btn" id="btn-gerar" onclick="gerarP12()">
+      <div class="spinner" id="spinner"></div>
+      <span id="btn-label">Gerar e baixar .p12</span>
+    </button>
+
+    <div class="status" id="status"></div>
+
+    <div class="info-box">
+      <span class="icon">🔒</span>
+      <p>Este gerador funciona 100% offline no seu navegador. Nenhuma chave, senha ou dado pessoal é transmitido para servidores externos.</p>
+    </div>
+
+    <footer>
+      <div class="dot"></div>
+      <span>Processamento local via node-forge — nenhum dado enviado externamente</span>
+    </footer>
+
+  </div>
+
+  <script>
+    function atualizaForca(senha) {
+      const fill = document.getElementById('strength-fill');
+      let score = 0;
+      if (senha.length >= 6) score++;
+      if (senha.length >= 10) score++;
+      if (/[A-Z]/.test(senha)) score++;
+      if (/[0-9]/.test(senha)) score++;
+      if (/[^A-Za-z0-9]/.test(senha)) score++;
+      const pct = (score / 5) * 100;
+      const cores = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#27ae60'];
+      fill.style.width = pct + '%';
+      fill.style.background = cores[score - 1] || '#e74c3c';
+    }
+
+    function setStatus(msg, tipo) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = 'status ' + tipo;
+    }
+
+    function setBusy(busy) {
+      const btn = document.getElementById('btn-gerar');
+      const spinner = document.getElementById('spinner');
+      const label = document.getElementById('btn-label');
+      btn.disabled = busy;
+      spinner.style.display = busy ? 'block' : 'none';
+      label.textContent = busy ? 'Gerando certificado...' : 'Gerar e baixar .p12';
+    }
+
+    function gerarP12() {
+      const cn      = document.getElementById('cn').value.trim();
+      const org     = document.getElementById('org').value.trim();
+      const country = document.getElementById('country').value.trim().toUpperCase() || 'BR';
+      const state   = document.getElementById('state').value.trim();
+      const email   = document.getElementById('email').value.trim();
+      const keySize = parseInt(document.getElementById('keysize').value);
+      const days    = parseInt(document.getElementById('days').value) || 365;
+      const pass    = document.getElementById('pass').value;
+      const pass2   = document.getElementById('pass2').value;
+
+      if (!cn)             return setStatus('Preencha o Nome Comum (CN).', 'err');
+      if (!pass || pass.length < 6) return setStatus('A senha deve ter pelo menos 6 caracteres.', 'err');
+      if (pass !== pass2)  return setStatus('As senhas não coincidem.', 'err');
+
+      setBusy(true);
+      setStatus('Gerando chave RSA ' + keySize + ' bits... aguarde alguns segundos.', 'loading');
+
+      setTimeout(() => {
+        try {
+          const kp = forge.pki.rsa.generateKeyPair({ bits: keySize, e: 0x10001 });
+          const cert = forge.pki.createCertificate();
+
+          cert.publicKey = kp.publicKey;
+          cert.serialNumber = Math.floor(Math.random() * 1e15).toString(16).padStart(16, '0');
+
+          const now = new Date();
+          cert.validity.notBefore = now;
+          cert.validity.notAfter = new Date(now.getTime() + days * 86400000);
+
+          const attrs = [{ name: 'commonName', value: cn }];
+          if (org)     attrs.push({ name: 'organizationName', value: org });
+          if (state)   attrs.push({ name: 'stateOrProvinceName', value: state });
+          if (country) attrs.push({ name: 'countryName', value: country });
+          if (email)   attrs.push({ name: 'emailAddress', value: email });
+
+          cert.setSubject(attrs);
+          cert.setIssuer(attrs);
+
+          const exts = [
+            { name: 'basicConstraints', cA: false },
+            { name: 'keyUsage', digitalSignature: true, nonRepudiation: true, keyEncipherment: true, dataEncipherment: true },
+            { name: 'extKeyUsage', emailProtection: true }
+          ];
+          if (email) exts.push({ name: 'subjectAltName', altNames: [{ type: 1, value: email }] });
+          cert.setExtensions(exts);
+
+          cert.sign(kp.privateKey, forge.md.sha256.create());
+
+          const p12Asn1 = forge.pkcs12.toPkcs12Asn1(kp.privateKey, [cert], pass, {
+            friendlyName: cn,
+            algorithm: '3des'
+          });
+
+          const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
+          const blob = new Blob(
+            [Uint8Array.from(p12Der, c => c.charCodeAt(0))],
+            { type: 'application/x-pkcs12' }
+          );
+
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = cn.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9\-_]/g, '') + '.p12';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          setStatus('✓ Certificado gerado e baixado com sucesso! Guarde a senha em local seguro.', 'ok');
+        } catch (e) {
+          setStatus('Erro ao gerar certificado: ' + e.message, 'err');
+        }
+        setBusy(false);
+      }, 60);
+    }
+  </script>
+</body>
+</html>
